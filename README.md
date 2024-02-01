@@ -9,13 +9,13 @@ Should a run of a model using this materialization be interrupted, a subsequent 
 Progress is logged in the command line for easy monitoring.
 
 ## Installation
+
 This is not a package on the Package Hub. To install it via git, add this to `packages.yml`:
+
 ```yaml
 packages:
-  - git: https://github.com/dbt-labs/dbt-labs-experimental-features
-    subdirectory: insert_by_period
+  - git: https://github.com/gamesdonequick/dbt-insert-by-period
     revision: XXXX #optional but highly recommended. Provide a full git sha hash, e.g. 7180db61d26836b931aa6ef8ad9d70e7fb3a69fa. If not provided, uses the current HEAD.
-
 ```
 
 ## Usage:
@@ -26,8 +26,11 @@ packages:
     materialized = "insert_by_period",
     period = "day",
     timestamp_field = "created_at",
+    target_timestamp_field = "time_bucket",
     start_date = "2018-01-01",
-    stop_date = "2018-06-01")
+    stop_date = "2018-06-01",
+    delete_existing = True,
+  )
 }}
 with events as (
   select *
@@ -40,7 +43,9 @@ with events as (
 **Configuration values:**
 
 - `period`: period to break the model into, must be a valid [datepart](https://docs.aws.amazon.com/redshift/latest/dg/r_Dateparts_for_datetime_functions.html) (default='Week')
-- `timestamp_field`: the column name of the timestamp field that will be used to break the model into smaller queries
+- `timestamp_field`: the column name of the timestamp field that will be used to break the source model into smaller queries
+- `target_timestamp_field`: the column name of the timestamp field that will be used to find the first period to start running from (default=timestamp_field)
+- `unique_key`: one or more columns used to match existing records for a created period and replace them, rather than just appending. (default=just append)
 - `start_date`: literal date or timestamp - generally choose a date that is earlier than the start of your data
 - `stop_date`: literal date or timestamp (default=current_timestamp)
 
@@ -52,12 +57,12 @@ with events as (
 
 ```yaml
 models:
-    project-name:
-        post-hook: "grant select on {{ this }} to db_reader"
+  project-name:
+    post-hook: "grant select on {{ this }} to db_reader"
 ```
 
 A useful workaround is to change the above post-hook to:
 
 ```yaml
-        post-hook: "grant select on {{ this.schema }}.{{ this.name }} to db_reader"
+post-hook: "grant select on {{ this.schema }}.{{ this.name }} to db_reader"
 ```

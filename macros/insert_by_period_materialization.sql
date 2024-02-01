@@ -1,6 +1,7 @@
 {% materialization insert_by_period, default -%}
   {%- set timestamp_field = config.require('timestamp_field') -%}
   {%- set target_timestamp_field = config.get('target_timestamp_field') or timestamp_field -%}
+  {%- set unique_key = config.get('unique_key') -%}
   {%- set start_date = config.require('start_date') -%}
   {%- set stop_date = config.get('stop_date') or '' -%}
   {%- set period = config.get('period') or 'week' -%}
@@ -93,12 +94,35 @@
     {{adapter.expand_target_column_types(from_relation=tmp_relation,
                                          to_relation=target_relation)}}
     {%- set name = 'main-' ~ i -%}
+    {%- set tmp_source = tmp_relation.include(schema=False) -%}
     {% call statement(name, fetch_result=True) -%}
+      -- if there's a unique key, delete any existing records matching the keys created for this
+      -- period run before inserting new ones.
+      {% if unique_key %}
+          {% if unique_key is sequence and unique_key is not string %}
+              delete from {{ target_relation }}
+              using {{tmp_source}}
+              where (
+                  {% for key in unique_key %}
+                      {{ tmp_source }}.{{ key }} = {{ target_relation }}.{{ key }}
+                      {{ "and " if not loop.last}}
+                  {% endfor %}
+              );
+          {% else %}
+              delete from {{ target_relation }}
+              where (
+                  {{ unique_key }}) in (
+                  select ({{ unique_key }})
+                  from {{ source }}
+              );
+          {% endif %}
+      {% endif %}
+
       insert into {{target_relation}} ({{target_cols_csv}})
       (
           select
               {{target_cols_csv}}
-          from {{tmp_relation.include(schema=False)}}
+          from {{tmp_source}}
       );
     {%- endcall %}
     {% set result = load_result('main-' ~ i) %}
